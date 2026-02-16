@@ -153,8 +153,8 @@
         </div>
 
         <div id="library" class="page">
-            <h3 style="border-left: 4px solid gold; padding-left: 10px;">Private Files (Free with Ads)</h3>
-            <div id="private-grid" class="content-grid"></div>
+            <h3 style="border-left: 4px solid gold; padding-left: 10px;">Watch History</h3>
+            <div id="history-grid" class="content-grid"></div>
         </div>
 
         <div id="profile" class="page">
@@ -211,7 +211,7 @@
         <div class="nav-item nav-active" onclick="go('home', this)" id="nav-home">🏠<br>Home</div>
         <div class="nav-item" onclick="go('music-page', this)" id="nav-music">🎵<br>Music</div>
         <div class="nav-item" onclick="go('pass-page', this)" id="nav-pass">🧧<br>Support</div>
-        <div class="nav-item" onclick="go('library', this)" id="nav-library">📁<br>Library</div>
+        <div class="nav-item" onclick="go('library', this)" id="nav-library">📁<br>History</div>
         <div class="nav-item" onclick="go('profile', this)" id="nav-profile">👤<br>Profile</div>
     </div>
 
@@ -252,13 +252,41 @@
             document.getElementById('uid-donation').innerText = auth.currentUser.uid;
             loadData();
             loadProfile();
-            // Initialize back button prevention
+            loadWatchHistory();
             history.pushState(null, null, window.location.pathname);
         }
 
-        // ADS & PLAYER (FIXED REFRESH LOOP)
+        // --- NEW: SAVE TO WATCH HISTORY ---
+        function saveToHistory(link, title, img) {
+            const userId = auth.currentUser.uid;
+            db.ref('users/' + userId + '/history').push({
+                link: link,
+                title: title,
+                img: img,
+                timestamp: Date.now()
+            });
+        }
+
+        function loadWatchHistory() {
+            const userId = auth.currentUser.uid;
+            db.ref('users/' + userId + '/history').limitToLast(10).on('value', s => {
+                const container = document.getElementById('history-grid');
+                container.innerHTML = "";
+                if(!s.val()) return;
+                Object.values(s.val()).reverse().forEach(item => {
+                    container.innerHTML += `<div class="item-card" onclick="playWithAds('${item.link}', '${item.title}')"><img src="${item.img}"><p style="padding:10px; font-size:12px; margin:0;">${item.title}</p></div>`;
+                });
+            });
+        }
+
+        // ADS & PLAYER (AUTO CHROME AD TRIGGER)
         let midRoll;
-        function playWithAds(link, title) {
+        function playWithAds(link, title, img) {
+            // DIRECT BROWSER AD: Open in new tab
+            window.open("https://seekstreaming.com", "_blank"); 
+            
+            saveToHistory(link, title, img); // Save history
+            
             const adOverlay = document.getElementById('ad-overlay');
             const adSec = document.getElementById('ad-sec');
             adOverlay.style.display = 'flex';
@@ -274,10 +302,7 @@
             document.getElementById('playing-title').innerText = title;
             document.getElementById('video-iframe').src = link;
             document.getElementById('video-player-overlay').style.display = 'flex';
-            
-            // MAGIC: Push fake history para sa back button phone
             history.pushState({playing: true}, "");
-            
             clearInterval(midRoll);
             midRoll = setInterval(() => { document.getElementById('video-iframe').src = ""; playWithAds(link, title); }, 600000);
         }
@@ -286,13 +311,9 @@
             document.getElementById('video-iframe').src = ""; 
             document.getElementById('video-player-overlay').style.display = 'none'; 
             clearInterval(midRoll); 
-            // MAGIC: Back the history without refresh
-            if(history.state && history.state.playing) {
-                history.back();
-            }
+            if(history.state && history.state.playing) { history.back(); }
         }
 
-        // CATCH SYSTEM BACK BUTTON
         window.onpopstate = function(event) {
             if (document.getElementById('video-player-overlay').style.display === 'flex') {
                 document.getElementById('video-iframe').src = ""; 
@@ -301,42 +322,31 @@
             }
         };
 
-        // ADMIN UPLOAD LOGIC
         function adminPost() {
             const file = document.getElementById('adm-file').files[0];
             const directLink = document.getElementById('adm-direct-link').value;
             const title = document.getElementById('adm-title').value;
             const img = document.getElementById('adm-img').value;
             const type = document.getElementById('adm-type').value;
-            
             if(!title || !img) return alert("Fill Title and Image!");
-            
             const btn = document.getElementById('btn-admin-add');
             btn.disabled = true;
-
-            if (directLink) {
-                db.ref('content/' + type).push({ title, img, link: directLink })
-                .then(() => { alert("Posted Link!"); location.reload(); });
+            if (directLink) { 
+                  db.ref('content/' + type).push({ title, img, link: directLink }).then(() => { alert("Posted Link!"); location.reload(); });
             } 
             else if (file) {
                 const bar = document.getElementById('up-bar');
                 document.getElementById('up-progress').style.display = 'block';
-                const ref = storage.ref('videos/' + Date.now() + "_" + file.name);
-                const task = ref.put(file);
+                const task = storage.ref('videos/' + Date.now() + "_" + file.name).put(file);
                 task.on('state_changed', s => { bar.style.width = (s.bytesTransferred / s.totalBytes) * 100 + "%"; }, e => alert(e.message), () => {
                     task.snapshot.ref.getDownloadURL().then(url => {
                         db.ref('content/' + type).push({ title, img, link: url });
-                        alert("Posted Upload!"
-                      );    location.reload();
+                        alert("Posted Upload!"); location.reload();
                     });
                 });
-            } else {
-                alert("Provide a Link or a File!");
-                btn.disabled = false;
-            }
+            } else { alert("Provide a Link or a File!"); btn.disabled = false; }
         }
 
-        // MOVIE REQUEST
         function openRequest() { document.getElementById('set-modal').style.display = 'none'; document.getElementById('request-modal').style.display = 'flex'; }
         function submitRequest() {
             const title = document.getElementById('req-title').value;
@@ -345,17 +355,15 @@
             .then(() => { alert("Thankyouu for the support wait for a 24hours!"); document.getElementById('request-modal').style.display = 'none'; });
         }
         
-        // CORE FUNCTIONS
         function loadData() {
             db.ref('content/movies').on('value', s => renderGrid('movie-grid', s.val()));                                                    
             db.ref('content/music').on('value', s => renderGrid('music-grid', s.val()));
-            db.ref('content/private').on('value', s => renderGrid('private-grid', s.val()));
         }
         function renderGrid(id, data) {
             const container = document.getElementById(id); container.innerHTML = "";
             if(!data) return;
             Object.values(data).reverse().forEach(item => {
-                container.innerHTML += `<div class="item-card" onclick="playWithAds('${item.link}', '${item.title}')"><img src="${item.img}"><p style="padding:10px; font-size:12px; margin:0;">${item.title}</p></div>`;
+                container.innerHTML += `<div class="item-card" onclick="playWithAds('${item.link}', '${item.title}', '${item.img}')"><img src="${item.img}"><p style="padding:10px; font-size:12px; margin:0;">${item.title}</p></div>`;
             });
         }
         function handleSignUp() {
@@ -380,4 +388,3 @@
     </script>
 </body>
 </html>
-             
