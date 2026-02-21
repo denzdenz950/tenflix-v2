@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TENFLIX - ULTIMATE GLOW</title>
+    
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-storage.js"></script>
+
+    <style>
+        :root { --n-red: #E50914; --glow: 0 0 20px rgba(229, 9, 20, 0.6); }
+        body { background: #000; color: #fff; font-family: 'Segoe UI', sans-serif; margin: 0; padding: 0; overflow-x: hidden; }
+        
+        .logo { color: var(--n-red); font-size: 40px; font-weight: bold; text-shadow: var(--glow); text-align: center; margin-bottom: 20px; }
+        .btn-main { width: 100%; padding: 15px; background: var(--n-red); color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; box-shadow: var(--glow); transition: 0.3s; margin-top: 10px; }
+        .btn-main:hover { background: #ff1a1a; transform: scale(1.02); }
+
+        /* 1. NETFLIX-STYLE LOADING */
+        #ad-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; z-index: 40000; justify-content: center; align-items: center; flex-direction: column; text-align: center; }
+        .netflix-loader { width: 60px; height: 60px; border: 6px solid #333; border-top: 6px solid var(--n-red); border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 20px; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        /* FLOATING SUPPORT */
+        .floating-support { position: fixed; bottom: 85px; right: 20px; width: 60px; height: 60px; background: var(--n-red); border-radius: 50%; display: flex; justify-content: center; align-items: center; box-shadow: var(--glow); z-index: 9999; cursor: pointer; border: 2px solid white; animation: bounce 2s infinite; font-size: 25px; }
+        @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+
+        /* VIDEO PLAYER */
+        #video-player-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; z-index: 30000; flex-direction: column; }
+        .player-header { padding: 15px; background: #111; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #333; }
+
+        /* EPISODE SELECTOR UI */
+        #ep-selector-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 35000; flex-direction: column; padding: 20px; box-sizing: border-box; }
+        .ep-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 10px; margin-top: 20px; overflow-y: auto; }
+        .ep-btn { background: #222; border: 1px solid #444; color: white; padding: 15px; border-radius: 8px; cursor: pointer; text-align: center; transition: 0.3s; }
+        .ep-btn:hover { background: var(--n-red); border-color: var(--n-red); box-shadow: var(--glow); }
+
+        /* AUTH BOX */
+        #auth-container { display: flex; justify-content: center; align-items: center; min-height: 100vh; background: linear-gradient(rgba(0,0,0,0.8), rgba(0,0,0,0.8)), url('https://assets.nflxext.com/ffe/siteui/vlv3/f841d4c7-10e1-40af-bca1-0746f38f3662/af39233f-c184-4632-8419-f532a24d5a9d/PH-en-20220502-popsignuptwoweeks-perspective_alpha_website_large.jpg'); background-size: cover; }
+        #auth-page { width: 90%; max-width: 400px; background: rgba(0,0,0,0.95); padding: 40px; border-radius: 10px; border: 1px solid #333; }
+        .auth-input, .search-bar { width: 100%; padding: 14px; margin-bottom: 15px; border-radius: 5px; border: 1px solid #444; background: #222; color: white; outline: none; box-sizing: border-box; }
+
+        /* 3. CATEGORY SYSTEM UI */
+        .filter-container { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 10px; margin-bottom: 10px; scrollbar-width: none; }
+        .filter-btn { background: #222; color: white; border: 1px solid #444; padding: 6px 15px; border-radius: 20px; font-size: 12px; cursor: pointer; white-space: nowrap; }
+        .filter-btn.active { background: var(--n-red); border-color: var(--n-red); box-shadow: var(--glow); }
+
+        /* MAIN APP */
+        #main-app { display: none; background: #141414; min-height: 100vh; }
+        .header { padding: 15px 5%; display: flex; justify-content: space-between; align-items: center; background: #000; border-bottom: 1px solid #222; position: sticky; top:0; z-index: 1000; }
+        .page { display: none; padding: 20px 5% 150px 5%; animation: fadeIn 0.4s; }
+        .active-page { display: block; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+        /* CONTENT GRID & VIEW BADGE */
+        .content-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin-top: 15px; }
+        .item-card { background: #181818; border-radius: 8px; overflow: hidden; border: 1px solid #333; cursor: pointer; position: relative; }
+        .item-card img { width: 100%; height: 200px; object-fit: cover; }
+        .view-badge { position: absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.7); padding: 2px 8px; border-radius: 4px; font-size: 10px; color: white; }
+
+        /* PASS CARDS */
+        .pass-card { background: #181818; padding: 20px; border-radius: 10px; margin-bottom: 15px; border: 1px solid #333; }
+        .pay-btn { display: block; width: 100%; padding: 12px; margin-bottom: 10px; border-radius: 6px; font-weight: bold; text-decoration: none; text-align: center; font-size: 14px; }
+        
+        .nav { position: fixed; bottom: 0; width: 100%; background: #000; display: flex; justify-content: space-around; padding: 12px 0; border-top: 1px solid #222; z-index: 1000; }
+        .nav-item { color: #888; font-size: 10px; text-align: center; cursor: pointer; flex: 1; }
+        .nav-active { color: #fff; text-shadow: var(--glow); }
+
+        /* MODALS */
+        .modal { display: none; position: fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.9); z-index:60000; justify-content:center; align-items:center; }
+        .modal-content { background:#111; padding:30px; border-radius:12px; width:85%; max-width:350px; text-align:center; border: 1px solid var(--n-red); max-height: 85vh; overflow-y: auto; }
+        .admin-list-item { background: #222; padding: 10px; margin-bottom: 5px; border-radius: 5px; display: flex; justify-content: space-between; align-items: center; font-size: 12px; }
+        #up-progress { display: none; width: 100%; background: #333; border-radius: 5px; margin: 10px 0; height: 10px; }
+        #up-bar { width: 0%; height: 100%; background: gold; }
+
+        /* MUSIC PLAYER MINI */
+        #music-control { position: fixed; bottom: 85px; left: 20px; background: #000; border: 1px solid var(--n-red); padding: 10px; border-radius: 50px; display: flex; align-items: center; gap: 10px; z-index: 9999; box-shadow: var(--glow); }
+    </style>
+</head>
+<body>
+
+    <div id="ad-overlay">
+        <div class="netflix-loader"></div>
+        <h2 style="color:white; margin:0; font-size: 18px; letter-spacing: 2px;">YOUR PLAYER IS READY</h2>
+        <p style="color:gray; font-size: 12px; margin-top: 10px;">Enjoy Unlimited Free Streams!</p>
+    </div>
+
+    <div id="video-player-overlay">
+        <div class="player-header">
+            <span id="playing-title" style="font-weight:bold; color:var(--n-red); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:70%;">Loading...</span>
+            <button onclick="closePlayer()" style="background:none; border:none; color:white; font-size:18px; font-weight:bold;">✕ CLOSE</button>
+        </div>
+        <iframe id="video-iframe" src="" style="width:100%; flex-grow:1; border:none;" allowfullscreen></iframe>
+    </div>
+
+    <div id="ep-selector-overlay">
+        <h2 id="ep-series-title" style="color:var(--n-red); margin:0;">Series Title</h2>
+        <p style="color:gray; font-size:12px;">Select Episode to Watch</p>
+        <div id="ep-grid-container" class="ep-grid"></div>
+        <button class="btn-main" style="background:#222; margin-top:20px;" onclick="document.getElementById('ep-selector-overlay').style.display='none'">CLOSE</button>
+    </div>
+
+    <div id="music-control">
+        <button onclick="toggleMusic()" id="music-btn" style="background:none; border:none; color:white; font-size:18px; cursor:pointer;">🎵</button>
+        <small id="music-track-name" style="color:white; font-size:10px; max-width:80px; overflow:hidden; white-space:nowrap;">No Track</small>
+        <audio id="global-audio" loop></audio>
+    </div>
+
+    <div class="floating-support" onclick="go('pass-page', document.getElementById('nav-pass'))">💬</div>
+
+    <div id="auth-container">
+        <div id="auth-page">
+            <h1 class="logo">TENFLIX</h1>
+            
+            <div id="login-form-div">
+                <input type="email" id="login-email" class="auth-input" placeholder="Email Address">
+                <input type="password" id="login-pass" class="auth-input" placeholder="Password">
+                <button class="btn-main" onclick="handleLogin()">LOG IN</button>
+                <p style="text-align:center; font-size:12px; color:gray; cursor:pointer; margin-top:15px;" onclick="forgotPassword()">Forgot Password?</p>
+                <p style="text-align:center; font-size:13px; margin-top:10px;">No account? <span style="color:var(--n-red); cursor:pointer; font-weight:bold;" onclick="toggleAuth('signup')">CREATE ACCOUNT</span></p>
+            </div>
+
+            <div id="signup-form-div" style="display:none;">
+                <input type="text" id="reg-name" class="auth-input" placeholder="Full Name">
+                <input type="text" id="reg-phone" class="auth-input" placeholder="Phone Number (All Country)">
+                <input type="email" id="reg-email" class="auth-input" placeholder="Email Address">
+                <input type="password" id="reg-pass" class="auth-input" placeholder="Password">
+                <button class="btn-main" onclick="handleSignUp()">CREATE ACCOUNT</button>
+                <p onclick="toggleAuth('login')" style="text-align:center; cursor:pointer; font-size:13px; margin-top:15px;">BACK TO LOGIN</p>
+            </div>
+
+            <div id="verify-page-div" style="display:none;">
+                <h2 style="color:var(--n-red); text-align:center;">Verify Email</h2>
+                <div style="text-align:left; font-size:13px; background:#111; padding:15px; border-radius:8px; border:1px solid #333;">
+                    <p style="color:gold; font-weight:bold; margin-top:0;">Paano i-verify?</p>
+                    <ol style="padding-left:20px; color:#ccc;">
+                        <li>Buksan ang iyong <b>Email App</b>.</li>
+                        <li>Hanapin ang email mula sa "Firebase/Tenflix".</li>
+                        <li>Tingnan sa <b>SPAM FOLDER</b> kung wala sa Inbox.</li>
+                        <li>I-click ang <b>Link</b> na nasa loob ng email.</li>
+                        <li>Bumalik dito at pindutin ang button sa ibaba.</li>
+                    </ol>
+                </div>
+                <button class="btn-main" onclick="checkVerification()">I'VE VERIFIED MY ACCOUNT</button>
+                <button class="btn-main" style="background: #333; margin-top: 10px;" onclick="confirmBack()">BACK</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="main-app">
+        <div class="header">
+            <div style="display:flex; align-items:center;">
+                <button id="admin-panel-btn" style="display:none; background:var(--n-red); color:white; border:none; padding:5px 10px; border-radius:4px; font-weight:bold; cursor:pointer;" onclick="openAdminModal()">ADMIN</button>
+                <div class="logo" style="font-size:24px; margin:0; margin-left:10px;">TENFLIX</div>
+            </div>
+            <div id="status-badge" style="background:var(--n-red); padding:5px 12px; border-radius:20px; font-size:10px; font-weight:bold;">FREE</div>
+        </div>
+
+        <div id="home" class="page active-page">
+            <input type="text" class="search-bar" id="search-main" placeholder="Search Movie, Anime, K-Drama..." onkeyup="filterContent('movie-grid', this.value)">
+            
+            <div class="filter-container">
+                <button class="filter-btn active" onclick="filterCategory('All', this)">All</button>
+                <button class="filter-btn" onclick="filterCategory('Movie', this)">Movies</button>
+                <button class="filter-btn" onclick="filterCategory('Series', this)">Series</button>
+                <button class="filter-btn" onclick="filterCategory('Anime', this)">Anime</button>
+                <button class="filter-btn" onclick="filterCategory('Kdrama', this)">Kdrama</button>
+            </div>
+
+            <h3 id="category-title" style="border-left: 4px solid var(--n-red); padding-left: 10px;">Trending</h3>
+            <div id="movie-grid" class="content-grid"></div>
+        </div>
+
+        <div id="music-page" class="page">
+            <input type="text" class="search-bar" placeholder="Search Songs..." onkeyup="filterContent('music-grid', this.value)">
+            <h3 style="border-left: 4px solid #00ff00; padding-left: 10px;">Ten-Music</h3>
+            <div id="music-grid" class="content-grid"></div>
+        </div>
+
+        <div id="pass-page" class="page">
+            <h2 style="text-align:center; color: gold;">DONATION & SUPPORT</h2>
+            <div class="pass-card" style="border: 1px solid gold; text-align: center;">
+                <p style="font-weight:bold; color: gold; font-size: 18px;">SUPPORT TENFLIX</p>
+                <a href="https://www.paypal.com/paypalme/TenflixSupport" target="_blank" class="pay-btn" style="background:#0070ba; color:white;">Donate via PayPal</a>
+                <a href="https://www.facebook.com/denzelofficial32" target="_blank" class="pay-btn" style="background:#1877F2; color:white;">Messenger (Denzel Dosdos)</a>
+                <a href="https://wa.me/639912968835" target="_blank" class="pay-btn" style="background:#25D366; color:white;">WhatsApp Support</a>
+                <p style="font-size:10px; color:gray; margin-top: 15px;">Your UID: <br><span id="uid-donation" style="font-weight:bold; color: gold;"></span></p>
+            </div>
+        </div>
+
+        <div id="library" class="page">
+            <h3 style="border-left: 4px solid gold; padding-left: 10px;">Private Library</h3>
+            <div id="private-grid" class="content-grid"></div>
+        </div>
+
+        <div id="profile" class="page">
+            <div style="text-align:center;">
+                <img id="profile-img-display" src="https://api.dicebear.com/7.x/avataaars/svg?seed=Lucky" style="width:100px; height:100px; border-radius:50%; border:3px solid var(--n-red);">
+                <h3 id="profile-name-display">User Name</h3>
+                <p id="user-email-display" style="font-size:10px; color:#555;"></p>
+                <button class="btn-main" style="background:#222; width:auto; padding:8px 20px;" onclick="document.getElementById('set-modal').style.display='flex'">⚙️ SETTINGS</button>
+            </div>
+            <button class="btn-main" style="background:none; border:1px solid #333; margin-top:30px;" onclick="logout()">LOGOUT</button>
+        </div>
+    </div>
+
+    <div id="admin-modal" class="modal"><div class="modal-content">
+        <h3>Admin Tools</h3>
+        <div style="text-align: left; margin-bottom: 20px;">
+            <p style="font-size: 12px; color: var(--n-red); font-weight: bold;">+ ADD CONTENT</p>
+            <select id="adm-type" class="auth-input">
+                <option value="movies">Movies/Series</option>
+                <option value="music">Music</option>
+                <option value="private">Library</option>
+            </select>
+            <select id="adm-cat-label" class="auth-input">
+                <option value="Movie">Label: Movie</option>
+                <option value="Series">Label: Series</option>
+                <option value="Anime">Label: Anime</option>
+                <option value="Kdrama">Label: Kdrama</option>
+            </select>
+            <input type="text" id="adm-title" class="auth-input" placeholder="Title">
+            <input type="text" id="adm-img" class="auth-input" placeholder="Image URL">
+            <input type="text" id="adm-direct-link" class="auth-input" placeholder="Direct Video Link">
+            <p style="font-size: 10px; color: gray;">Or Upload File:</p>
+            <input type="file" id="adm-file" accept="video/*" class="auth-input">
+            <div id="up-progress"><div id="up-bar"></div></div>
+            <button class="btn-main" id="btn-admin-add" onclick="adminPost()">POST CONTENT</button>
+        </div>
+        <hr style="border: 0.5px solid #333;">
+        <p style="font-size: 12px; color: gold; font-weight: bold; text-align: left;">MANAGE CONTENT (DELETE)</p>
+        <div id="admin-manage-list" style="max-height: 200px; overflow-y: auto;"></div>
+        <button class="btn-main" style="background:none;" onclick="document.getElementById('admin-modal').style.display='none'">CLOSE</button>
+    </div></div>
+
+    <div id="set-modal" class="modal"><div class="modal-content">
+        <h3>Edit Profile</h3>
+        <input type="text" id="new-name" class="auth-input" placeholder="Edit Name">
+        <input type="text" id="new-desc" class="auth-input" placeholder="Edit Description">
+        <input type="text" id="new-pfp" class="auth-input" placeholder="Profile Pic URL">
+        <button class="btn-main" onclick="saveSettings()">SAVE ALL CHANGES</button>
+        <button class="btn-main" style="background:gold; color:black;" onclick="openRequest()">🎬 MOVIE REQUEST</button>
+        <button class="btn-main" style="background:#111; border:1px solid var(--n-red);" onclick="changePassword()">🔑 CHANGE PASSWORD</button>
+        <button class="btn-main" style="background:none;" onclick="document.getElementById('set-modal').style.display='none'">CLOSE</button>
+    </div></div>
+
+    <div id="request-modal" class="modal"><div class="modal-content">
+        <h3 style="color: gold;">Movie Request</h3>
+        <p style="font-size: 11px; color: #ccc;">Wait for response of admin😊</p>
+        <input type="email" id="req-email-user" class="auth-input" placeholder="Your Email Address">
+        <select id="req-type" class="auth-input">
+            <option value="Movie">Movie</option>
+            <option value="Anime">Anime</option>
+            <option value="Kdrama">Kdrama</option>
+        </select>
+        <input type="text" id="req-title" class="auth-input" placeholder="Request Title...">
+        <textarea id="req-msg" class="auth-input" style="height: 60px;" placeholder="Additional Message..."></textarea>
+        <button class="btn-main" onclick="submitRequest()">SUBMIT REQUEST</button>
+        <button class="btn-main" style="background:none;" onclick="document.getElementById('request-modal').style.display='none'">CANCEL</button>
+    </div></div>
+
+    <div class="nav">
+        <div class="nav-item nav-active" onclick="go('home', this)" id="nav-home">🏠<br>Home</div>
+        <div class="nav-item" onclick="go('music-page', this)" id="nav-music">🎵<br>Music</div>
+        <div class="nav-item" onclick="go('pass-page', this)" id="nav-pass">🧧<br>Support</div>
+        <div class="nav-item" onclick="go('library', this)" id="nav-library">📁<br>Library</div>
+        <div class="nav-item" onclick="go('profile', this)" id="nav-profile">👤<br>Profile</div>
+    </div>
+
+    <script>
+        const firebaseConfig = { 
+            apiKey: "AIzaSyCKuzGOLXVZWBtr94yZRN5MGb25Y8E3nqA", 
+            authDomain: "tenflixapp-a2e10.firebaseapp.com", 
+            databaseURL: "https://tenflixapp-a2e10-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "tenflixapp-a2e10", 
+            storageBucket: "tenflixapp-a2e10.appspot.com",
+            appId: "1:203297041422:web:04a89753898324a900a05f" 
+        };
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.database();
+        const storage = firebase.storage();
+
+        // --- AUTH SYSTEM ---
+        auth.onAuthStateChanged(user => {
+            if(user) {
+                if(user.emailVerified) {
+                    showApp();
+                    if(user.email === "keventv415@gmail.com") document.getElementById('admin-panel-btn').style.display = 'block';
+                } else { toggleAuth('verify'); }
+            } else {
+                document.getElementById('auth-container').style.display = 'flex';
+                document.getElementById('main-app').style.display = 'none';
+            }
+        });
+
+        function showApp() {
+            document.getElementById('auth-container').style.display = 'none';
+            document.getElementById('main-app').style.display = 'block';
+            document.getElementById('user-email-display').innerText = auth.currentUser.email;
+            document.getElementById('uid-donation').innerText = auth.currentUser.uid;
+            loadData();
+            loadProfile();
+            history.pushState(null, null, window.location.pathname);
+        }
+
+        // --- SMART PLAYER & VIEW COUNTER ---
+        function playWithAds(key, type, link, title) {
+            const adOverlay = document.getElementById('ad-overlay');
+            adOverlay.style.display = 'flex';
+            db.ref(`content/${type}/${key}/views`).transaction(c => (c || 0) + 1);
+            setTimeout(() => {
+                adOverlay.style.display = 'none';
+                openPlayer(link, title);
+            }, 3000);
+        }
+
+        
+function openPlayer(link, title) {
+
+    const iframe = document.getElementById('video-iframe');
+
+    const servers = [
+        link,
+        link.replace("vidsrc.to", "vidsrc.xyz"),
+        link.replace("vidsrc.to", "vidsrc.me"),
+        link.replace("vidsrc.xyz", "vidsrc.to")
+    ];
+
+    let current = 0;
+
+    function loadServer() {
+        iframe.src = servers[current];
+    }
+
+    iframe.onerror = function () {
+        current++;
+        if (current < servers.length) {
+            loadServer();
+        } else {
+            alert("Video server unavailable. Please try again later.");
+        }
+    };
+
+    loadServer();
+}
+, "");
+        }
+
+        function closePlayer() { 
+            document.getElementById('video-iframe').removeAttribute('src'); 
+            document.getElementById('video-player-overlay').style.display = 'none'; 
+            if(history.state && history.state.playing) history.back();
+        }
+
+        // --- SERIES & CONTENT RENDERER ---
+        function renderGrid(id, type, data) {
+            const container = document.getElementById(id); 
+            container.innerHTML = "";
+            if(!data) return;
+
+            if(type === 'movies') {
+                const grouped = {};
+                Object.keys(data).forEach(key => {
+                    const item = data[key];
+                    const rawTitle = item.title;
+                    // Check if title has " - S" for series grouping
+                    if(rawTitle.includes(' - S')) {
+                        const baseTitle = rawTitle.split(' - S')[0];
+                        if(!grouped[baseTitle]) {
+                            grouped[baseTitle] = { isSeries: true, title: baseTitle, img: item.img, category: item.category, episodes: [] };
+                        }
+                        grouped[baseTitle].episodes.push({ key, epTitle: rawTitle.split(' - ')[1], link: item.link });
+                    } else {
+                        grouped[key] = { ...item, isSeries: false, key };
+                    }
+                });
+
+                Object.keys(grouped).reverse().forEach(key => {
+                    const item = grouped[key];
+                    const card = document.createElement('div');
+                    card.className = 'item-card';
+                    card.setAttribute('data-cat', item.category || 'Movie');
+                    card.innerHTML = `
+                        <div class="view-badge">${item.isSeries ? 'Series' : '👁️ ' + (item.views || 0)}</div>
+                        <img src="${item.img}">
+                        <p style="padding:10px; font-size:12px; margin:0; font-weight:bold;">${item.title}</p>
+                    `;
+                    card.onclick = () => item.isSeries ? showEpisodes(item) : playWithAds(item.key, 'movies', item.link, item.title.replace(/'/g, "\\'"));
+                    container.appendChild(card);
+                });
+            } else {
+                Object.keys(data).reverse().forEach(key => {
+                    const item = data[key];
+                    const card = `<div class="item-card" onclick="${type === 'music' ? "playMusic('"+item.link+"', '"+item.title+"')" : "playWithAds('"+key+"', '"+type+"', '"+item.link+"', '"+item.title.replace(/'/g, "\\'")+"')" }">
+                        <div class="view-badge">👁️ ${item.views || 0}</div>
+                        <img src="${item.img}">
+                        <p style="padding:10px; font-size:12px; margin:0; font-weight:bold;">${item.title}</p>
+                    </div>`;
+                    container.innerHTML += card;
+                });
+            }
+        }
+
+        function showEpisodes(series) {
+            const overlay = document.getElementById('ep-selector-overlay');
+            const grid = document.getElementById('ep-grid-container');
+            document.getElementById('ep-series-title').innerText = series.title;
+            grid.innerHTML = "";
+            // Sort episodes para sunod-sunod
+            series.episodes.sort((a,b) => a.epTitle.localeCompare(b.epTitle, undefined, {numeric: true})).forEach(ep => {
+                const btn = document.createElement('div');
+                btn.className = 'ep-btn';
+                btn.innerText = ep.epTitle;
+                btn.onclick = () => { 
+                    overlay.style.display = 'none'; 
+                    playWithAds(ep.key, 'movies', ep.link, series.title + " - " + ep.epTitle); 
+                };
+                grid.appendChild(btn);
+            });
+            overlay.style.display = 'flex';
+        }
+
+        // --- MUSIC LOGIC ---
+        function playMusic(link, title) {
+            const audio = document.getElementById('global-audio');
+            const trackName = document.getElementById('music-track-name');
+            const btn = document.getElementById('music-btn');
+            audio.src = link;
+            audio.play();
+            trackName.innerText = title;
+            btn.innerText = "⏸️";
+        }
+
+        function toggleMusic() {
+            const audio = document.getElementById('global-audio');
+            const btn = document.getElementById('music-btn');
+            if(!audio.src) return;
+            if(audio.paused) { audio.play(); btn.innerText = "⏸️"; }
+            else { audio.pause(); btn.innerText = "🎵"; }
+        }
+
+        // --- SETTINGS & PROFILE ---
+        function changePassword() {
+            const newPass = prompt("Enter New Password (min 6 chars):");
+            if(newPass && newPass.length >= 6) {
+                auth.currentUser.updatePassword(newPass)
+                    .then(() => alert("Password Updated Successfully!"))
+                    .catch(e => alert(e.message));
+            }
+        }
+
+        function saveSettings() {
+            db.ref('users/' + auth.currentUser.uid + '/profile').update({
+                name: document.getElementById('new-name').value,
+                desc: document.getElementById('new-desc').value,
+                pfp: document.getElementById('new-pfp').value
+            }).then(() => alert("Settings Saved!"));
+        }
+
+        function loadProfile() {
+            db.ref('users/' + auth.currentUser.uid + '/profile').on('value', s => {
+                const p = s.val();
+                if(p) {
+                    document.getElementById('profile-name-display').innerText = p.name || "User";
+                    document.getElementById('profile-img-display').src = p.pfp || "https://api.dicebear.com/7.x/avataaars/svg?seed=Lucky";
+                }
+            });
+        }
+
+        // --- ADMIN & DATA ---
+        function adminPost() {
+            const file = document.getElementById('adm-file').files[0];
+            const directLink = document.getElementById('adm-direct-link').value;
+            const title = document.getElementById('adm-title').value;
+            const img = document.getElementById('adm-img').value;
+            const type = document.getElementById('adm-type').value;
+            const cat = document.getElementById('adm-cat-label').value;
+            
+            if(!title || !img) return alert("Fill Title and Image!");
+
+            const postData = { title, img, category: cat, views: 0, link: "" };
+
+            if (directLink) {
+                postData.link = directLink;
+                db.ref('content/' + type).push(postData).then(() => { alert("Posted!"); location.reload(); });
+            } else if (file) {
+                const bar = document.getElementById('up-bar');
+                document.getElementById('up-progress').style.display = 'block';
+                const task = storage.ref('videos/' + Date.now() + "_" + file.name).put(file);
+                task.on('state_changed', 
+                    s => { bar.style.width = (s.bytesTransferred / s.totalBytes) * 100 + "%"; }, 
+                    e => alert(e.message), 
+                    () => {
+                        task.snapshot.ref.getDownloadURL().then(url => {
+                            postData.link = url;
+                            db.ref('content/' + type).push(postData);
+                            alert("Uploaded Successfully!"); location.reload();
+                        });
+                    }
+                );
+            }
+        }
+
+        function loadData() {
+            db.ref('content/movies').on('value', s => renderGrid('movie-grid', 'movies', s.val()));
+            db.ref('content/music').on('value', s => renderGrid('music-grid', 'music', s.val()));
+            db.ref('content/private').on('value', s => renderGrid('private-grid', 'private', s.val()));
+        }
+
+        // --- UI UTILS ---
+        function toggleAuth(mode) {
+            document.getElementById('login-form-div').style.display = mode === 'login' ? 'block' : 'none';
+            document.getElementById('signup-form-div').style.display = mode === 'signup' ? 'block' : 'none';
+            document.getElementById('verify-page-div').style.display = mode === 'verify' ? 'block' : 'none';
+        }
+
+        function handleLogin() { 
+            auth.signInWithEmailAndPassword(document.getElementById('login-email').value, document.getElementById('login-pass').value)
+                .catch(err => alert(err.message)); 
+        }
+
+        function handleSignUp() {
+            const name = document.getElementById('reg-name').value;
+            auth.createUserWithEmailAndPassword(document.getElementById('reg-email').value, document.getElementById('reg-pass').value)
+                .then(res => { 
+                    res.user.sendEmailVerification(); 
+                    db.ref('users/' + res.user.uid + '/profile').set({ name: name, phone: document.getElementById('reg-phone').value });
+                    toggleAuth('verify'); 
+                }).catch(err => alert(err.message)); 
+        }
+
+        function checkVerification() { 
+            auth.currentUser.reload().then(() => { 
+                if(auth.currentUser.emailVerified) showApp(); 
+                else alert("Verify email first! Check your Inbox or Spam."); 
+            }); 
+        }
+
+        function go(id, el) { 
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active-page')); 
+            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('nav-active')); 
+            document.getElementById(id).classList.add('active-page'); 
+            el.classList.add('nav-active'); 
+        }
+
+        function filterCategory(cat, btn) {
+            document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            document.getElementById('category-title').innerText = cat === 'All' ? 'Trending' : cat;
+            const cards = document.getElementById('movie-grid').getElementsByClassName('item-card');
+            for(let c of cards) {
+                if(cat === 'All') c.style.display = "block";
+                else c.style.display = c.getAttribute('data-cat') === cat ? "block" : "none";
+            }
+        }
+
+        function filterContent(id, q) { 
+            const cards = document.getElementById(id).getElementsByClassName('item-card'); 
+            for(let c of cards) { 
+                c.style.display = c.innerText.toLowerCase().includes(q.toLowerCase()) ? "block" : "none"; 
+            } 
+        }
+
+        function openAdminModal() { document.getElementById('admin-modal').style.display = 'flex'; }
+        function openRequest() { document.getElementById('set-modal').style.display = 'none'; document.getElementById('request-modal').style.display = 'flex'; }
+        function submitRequest() {
+            const email = document.getElementById('req-email-user').value;
+            const title = document.getElementById('req-title').value;
+            if(!email || !title) return alert("Email and Title are required!");
+            db.ref('requests').push({ 
+                userEmail: email, 
+                requestType: document.getElementById('req-type').value, 
+                movieTitle: title, 
+                message: document.getElementById('req-msg').value, 
+                time: Date.now() 
+            }).then(() => { 
+                alert("Request Sent!"); 
+                document.getElementById('request-modal').style.display = 'none'; 
+            });
+        }
+        
+        function logout() { auth.signOut().then(() => location.reload()); }
+        function forgotPassword() { 
+            const email = document.getElementById('login-email').value; 
+            if(email) auth.sendPasswordResetEmail(email).then(() => alert("Reset Link Sent to your Email!")); 
+            else alert("Input your Email Address first!"); 
+        }
+
+        window.onpopstate = function() { 
+            if (document.getElementById('video-player-overlay').style.display === 'flex') closePlayer(); 
+        };
+    </script>
+</body>
+</html>
